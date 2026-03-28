@@ -1,0 +1,43 @@
+name: Update Instagram Cache
+
+on:
+  schedule:
+    - cron: "0 * * * *"   # co godzine
+  workflow_dispatch:       # reczne uruchomienie przyciskiem Run workflow
+
+jobs:
+  update-cache:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install instaloader
+
+      - name: Restore session from secret
+        run: echo "${{ secrets.IG_SESSION_B64 }}" | base64 -d > _ig_session
+
+      - name: Update cache
+        env:
+          IG_USERNAME: camelocode
+        run: python ig_update_cache.py
+
+      - name: Remove session file
+        run: rm -f _ig_session
+
+      - name: Commit new posts
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add _ig_cache/
+          git diff --cached --quiet || git commit -m "chore: update instagram cache [skip ci]"
+          git push
