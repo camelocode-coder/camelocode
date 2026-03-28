@@ -2,8 +2,11 @@ name: Update Instagram Cache
 
 on:
   schedule:
-    - cron: "0 * * * *"   # co godzine
-  workflow_dispatch:       # reczne uruchomienie przyciskiem Run workflow
+    - cron: "0 * * * *"
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   update-cache:
@@ -23,21 +26,42 @@ jobs:
       - name: Install dependencies
         run: pip install instaloader
 
+      - name: Check secret exists
+        run: |
+          if [ -z "${{ secrets.IG_SESSION_B64 }}" ]; then
+            echo "BLAD: Secret IG_SESSION_B64 nie istnieje lub jest pusty!"
+            echo "Dodaj go w: Settings -> Secrets and variables -> Actions -> New repository secret"
+            exit 1
+          fi
+          echo "Secret OK - dlugosc: ${#IG_SESSION_B64} znakow"
+        env:
+          IG_SESSION_B64: ${{ secrets.IG_SESSION_B64 }}
+
       - name: Restore session from secret
-        run: echo "${{ secrets.IG_SESSION_B64 }}" | base64 -d > _ig_session
+        run: |
+          echo "${{ secrets.IG_SESSION_B64 }}" | base64 -d > _ig_session
+          echo "Plik sesji utworzony, rozmiar: $(wc -c < _ig_session) bajtow"
 
       - name: Update cache
         env:
           IG_USERNAME: camelocode
-        run: python ig_update_cache.py
+        run: |
+          python ig_update_cache.py
+          echo "Exit code: $?"
+
+      - name: Show cache contents
+        run: |
+          echo "Zawartosc _ig_cache/:"
+          ls -la _ig_cache/ 2>/dev/null || echo "Folder _ig_cache nie istnieje"
 
       - name: Remove session file
+        if: always()
         run: rm -f _ig_session
 
       - name: Commit new posts
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add _ig_cache/
+          git add _ig_cache/ 2>/dev/null || true
           git diff --cached --quiet || git commit -m "chore: update instagram cache [skip ci]"
-          git push
+          git push || echo "Brak nowych zmian do pushowania"
